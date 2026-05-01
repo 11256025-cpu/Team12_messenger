@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const STATUS_OPTIONS = ['線上', '離線', '忙碌中', '專注中'];
 
 export default function ProfileScreen() {
   const [image, setImage] = useState<string | null>(null);
+  const [tempImage, setTempImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [displayName, setDisplayName] = useState('我的帳戶');
   const [status, setStatus] = useState('線上');
@@ -17,6 +19,7 @@ export default function ProfileScreen() {
   const [tempStatus, setTempStatus] = useState(status);
   const [statusColor, setStatusColor] = useState('#31a24c');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmImageChange, setConfirmImageChange] = useState(false);
   const insets = useSafeAreaInsets();
 
   const statusColorMap = {
@@ -28,13 +31,37 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     requestImagePickerPermission();
+    loadProfileData();
   }, []);
 
-  const handleSaveName = () => {
+  const loadProfileData = async () => {
+    try {
+      const savedImage = await AsyncStorage.getItem('profileImage');
+      const savedName = await AsyncStorage.getItem('displayName');
+      const savedStatus = await AsyncStorage.getItem('userStatus');
+      const savedStatusColor = await AsyncStorage.getItem('statusColor');
+
+      if (savedImage) setImage(savedImage);
+      if (savedName) setDisplayName(savedName);
+      if (savedStatus) {
+        setStatus(savedStatus);
+        if (savedStatusColor) setStatusColor(savedStatusColor);
+      }
+    } catch (error) {
+      console.error('載入個人資料失敗:', error);
+    }
+  };
+
+  const handleSaveName = async () => {
     if (tempName.trim()) {
       setDisplayName(tempName.trim());
       setIsEditingName(false);
-      Alert.alert('成功', '名稱已更新');
+      try {
+        await AsyncStorage.setItem('displayName', tempName.trim());
+        Alert.alert('成功', '名稱已更新');
+      } catch {
+        Alert.alert('錯誤', '儲存名稱失敗');
+      }
     } else {
       Alert.alert('錯誤', '名稱不能為空');
     }
@@ -50,11 +77,18 @@ export default function ProfileScreen() {
     setIsEditingStatus(true);
   };
 
-  const handleSaveStatus = () => {
+  const handleSaveStatus = async () => {
+    const newColor = statusColorMap[tempStatus as keyof typeof statusColorMap];
     setStatus(tempStatus);
-    setStatusColor(statusColorMap[tempStatus as keyof typeof statusColorMap]);
+    setStatusColor(newColor);
     setIsEditingStatus(false);
-    Alert.alert('成功', `狀態已更新為「${tempStatus}」`);
+    try {
+      await AsyncStorage.setItem('userStatus', tempStatus);
+      await AsyncStorage.setItem('statusColor', newColor);
+      Alert.alert('成功', `狀態已更新為「${tempStatus}」`);
+    } catch {
+      Alert.alert('錯誤', '儲存狀態失敗');
+    }
   };
 
   const handleCancelStatusEdit = () => {
@@ -80,23 +114,48 @@ export default function ProfileScreen() {
       });
 
       if (!result.canceled) {
-        setImage(result.assets[0].uri);
-        Alert.alert('提示', '頭像已更新');
+        setTempImage(result.assets[0].uri);
+        setConfirmImageChange(true);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('錯誤', '選擇圖片時出錯');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleConfirmImageChange = async () => {
+    if (tempImage) {
+      try {
+        setImage(tempImage);
+        await AsyncStorage.setItem('profileImage', tempImage);
+        setConfirmImageChange(false);
+        setTempImage(null);
+        Alert.alert('成功', '頭像已更新並儲存');
+      } catch {
+        Alert.alert('錯誤', '儲存頭像失敗');
+      }
+    }
+  };
+
+  const handleCancelImageChange = () => {
+    setConfirmImageChange(false);
+    setTempImage(null);
+  };
+
   const removeImage = () => {
     setConfirmRemove(true);
   };
 
-  const handleConfirmRemove = () => {
-    setImage(null);
-    setConfirmRemove(false);
+  const handleConfirmRemove = async () => {
+    try {
+      setImage(null);
+      setConfirmRemove(false);
+      await AsyncStorage.removeItem('profileImage');
+      Alert.alert('成功', '頭像已刪除');
+    } catch {
+      Alert.alert('錯誤', '刪除頭像失敗');
+    }
   };
 
   const handleCancelRemove = () => {
@@ -153,19 +212,66 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          {image && confirmRemove && (
-            <View style={styles.confirmRemoveCard}>
-              <Text style={styles.confirmRemoveText}>確定要刪除大頭貼嗎？</Text>
-              <View style={styles.confirmButtonRow}>
-                <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={handleCancelRemove}>
-                  <Text style={styles.cancelButtonText}>取消</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={handleConfirmRemove}>
-                  <Text style={styles.buttonText}>確認刪除</Text>
-                </TouchableOpacity>
+          <Modal
+            visible={confirmImageChange}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={handleCancelImageChange}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>確認變更頭像</Text>
+                {tempImage && (
+                  <View style={styles.imagePreviewContainer}>
+                    <Image source={{ uri: tempImage }} style={styles.previewImage} />
+                  </View>
+                )}
+                <Text style={styles.confirmText}>確定要用這張照片作為新的大頭貼嗎？</Text>
+                <View style={styles.modalButtonGroup}>
+                  <TouchableOpacity
+                    style={[styles.button, styles.modalButton, styles.cancelButton]}
+                    onPress={handleCancelImageChange}
+                  >
+                    <Text style={styles.cancelButtonText}>取消</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, styles.modalButton, styles.primaryButton]}
+                    onPress={handleConfirmImageChange}
+                  >
+                    <Text style={styles.buttonText}>確認變更</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          )}
+          </Modal>
+
+          <Modal
+            visible={confirmRemove}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={handleCancelRemove}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>刪除大頭貼</Text>
+                <Text style={styles.confirmText}>確定要刪除目前的大頭貼嗎？</Text>
+                <View style={styles.modalButtonGroup}>
+                  <TouchableOpacity
+                    style={[styles.button, styles.modalButton, styles.cancelButton]}
+                    onPress={handleCancelRemove}
+                  >
+                    <Text style={styles.cancelButtonText}>取消</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, styles.modalButton, styles.dangerButton]}
+                    onPress={handleConfirmRemove}
+                  >
+                    <Text style={styles.buttonText}>刪除</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </View>
 
         <View style={styles.section}>
@@ -295,8 +401,8 @@ const styles = StyleSheet.create({
   placeholderText: { color: '#8e8e93', marginTop: 8, fontSize: 13, textAlign: 'center' },
   editIconContainer: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#0a84ff', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#fff' },
   
-  buttonGroup: { gap: 12 },
-  button: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  buttonGroup: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  button: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 160 },
   primaryButton: { backgroundColor: '#0a84ff' },
   dangerButton: { backgroundColor: '#ff3b30' },
   buttonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
@@ -336,13 +442,16 @@ const styles = StyleSheet.create({
   inlineButtonGroup: { flexDirection: 'row', gap: 12, marginTop: 12 },
 
   // Modal 樣式
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 30 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContent: { width: '100%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 20, padding: 24, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 10, alignItems: 'center' },
   statusModalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 20, maxHeight: '70%' },
-  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, color: '#000' },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, color: '#000', textAlign: 'center' },
+  confirmText: { fontSize: 15, color: '#666', marginBottom: 20, textAlign: 'center', lineHeight: 21 },
+  imagePreviewContainer: { alignItems: 'center', marginBottom: 20 },
+  previewImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: '#e5e5ea' },
   textInput: { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, marginBottom: 8, color: '#000' },
   charCount: { fontSize: 12, color: '#8e8e93', marginBottom: 16, textAlign: 'right' },
-  modalButtonGroup: { flexDirection: 'row', gap: 12 },
+  modalButtonGroup: { flexDirection: 'row', gap: 12, justifyContent: 'center' },
   modalButton: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   cancelButton: { backgroundColor: '#f2f2f7' },
   cancelButtonText: { fontSize: 16, fontWeight: '600', color: '#000' },
