@@ -1,8 +1,8 @@
 // app/(tabs)/index.tsx
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // 請確認這裡的路徑正確指向你的 mock-messenger.ts
-import { CONTACTS, INITIAL_MESSAGES } from '../../mock-messenger'; 
+import { CONTACTS, INITIAL_MESSAGES } from '../../constants/mock-messenger';
 
 export default function ChatListScreen() {
   const router = useRouter();

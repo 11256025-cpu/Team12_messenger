@@ -1,7 +1,7 @@
 // app/chat/[id].tsx
-import { useLocalSearchParams, Stack } from 'expo-router';
-import { View, Text, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { CONTACTS, INITIAL_MESSAGES } from '../../mock-messenger';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { CONTACTS, INITIAL_MESSAGES } from '../../constants/mock-messenger';
 
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams();
