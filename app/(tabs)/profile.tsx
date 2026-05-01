@@ -177,12 +177,7 @@ export default function ProfileScreen() {
             disabled={loading}
           >
             {image ? (
-              <>
-                <Image source={{ uri: image }} style={styles.avatar} />
-                <View style={styles.editIconContainer}>
-                  <Ionicons name="pencil" size={16} color="#fff" />
-                </View>
-              </>
+              <Image source={{ uri: image }} style={styles.avatar} />
             ) : (
               <View style={styles.placeholder}>
                 <Ionicons name="camera-outline" size={48} color="#0a84ff" />
@@ -388,18 +383,18 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   headerTitle: { fontSize: 32, fontWeight: '800', color: '#000' },
   scrollContent: { padding: 16, paddingBottom: 40 },
   
   section: { marginBottom: 32 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, color: '#000' },
   
+  header: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  
   imageContainer: { alignItems: 'center', marginBottom: 20 },
   avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: '#f0f0f0' },
   placeholder: { width: 140, height: 140, borderRadius: 70, backgroundColor: '#f2f2f7', justifyContent: 'center', alignItems: 'center' },
   placeholderText: { color: '#8e8e93', marginTop: 8, fontSize: 13, textAlign: 'center' },
-  editIconContainer: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#0a84ff', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#fff' },
   
   buttonGroup: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   button: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 160 },
