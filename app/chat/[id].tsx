@@ -21,9 +21,10 @@ export default function ChatDetailScreen() {
 
     const newMessage = {
       id: `sent-${Date.now()}`,
+      contactId: id as string,
       senderId: 'me',
       text: draft.trim(),
-      timestamp: new Date().toISOString(),
+      createdAt: Date.now(),
     };
 
     setMessages((current) => [...current, newMessage]);

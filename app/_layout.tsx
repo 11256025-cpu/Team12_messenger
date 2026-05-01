@@ -1,26 +1,15 @@
-import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Stack } from 'expo-router';
 
-export default function TabLayout() {
+export default function RootLayout() {
   return (
-    <Tabs screenOptions={{ 
-      tabBarActiveTintColor: '#0a84ff', // 使用你定義的 Messenger 主色調
-      headerShown: true
-    }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: '聊天',
-          tabBarIcon: ({ color }) => <Ionicons name="chatbubble" size={24} color={color} />,
-        }}
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen 
+        name="chat/[id]" 
+        options={{ 
+          headerShown: false,
+        }} 
       />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: '設定',
-          tabBarIcon: ({ color }) => <Ionicons name="person" size={24} color={color} />,
-        }}
-      />
-    </Tabs>
+    </Stack>
   );
 }
