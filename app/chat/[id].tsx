@@ -11,6 +11,9 @@ export default function ChatDetailScreen() {
   const initialMessages = INITIAL_MESSAGES[id as string] || []; //[cite: 1]
   const [messages, setMessages] = useState(initialMessages);
   const [draft, setDraft] = useState('');
+  const [nickname, setNickname] = useState(contact?.name ?? '');
+  const [nicknameDraft, setNicknameDraft] = useState(contact?.name ?? '');
+  const [isEditingNickname, setIsEditingNickname] = useState(false);
   const listRef = useRef<FlatList<typeof initialMessages[0]> | null>(null);
 
   const handleSend = () => {
@@ -31,13 +34,56 @@ export default function ChatDetailScreen() {
     });
   };
 
+  const handleSaveNickname = () => {
+    const trimmed = nicknameDraft.trim();
+    if (!trimmed) return;
+    setNickname(trimmed);
+    setIsEditingNickname(false);
+  };
+
+  const handleEditNickname = () => {
+    setNicknameDraft(nickname);
+    setIsEditingNickname(true);
+  };
+
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      <Stack.Screen options={{ title: contact?.name || '聊天' }} />
+      <Stack.Screen options={{ title: nickname || contact?.name || '聊天' }} />
+
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={[styles.avatar, { backgroundColor: contact?.accentColor ?? '#0a84ff' }]} onPress={handleEditNickname} activeOpacity={0.8}>
+          <Text style={styles.avatarText}>{contact?.name.charAt(0) ?? '?'}</Text>
+        </TouchableOpacity>
+        <View style={styles.headerTextWrapper}>
+          <Text style={styles.headerTitle}>{nickname || contact?.name || '聊天'}</Text>
+          {contact?.handle ? <Text style={styles.headerSubtitle}>{contact.handle}</Text> : null}
+        </View>
+      </View>
+
+      {isEditingNickname ? (
+        <View style={styles.nicknameRow}>
+          <Text style={styles.nicknameLabel}>編輯暱稱</Text>
+          <View style={styles.nicknameInputWrapper}>
+            <TextInput
+              style={styles.nicknameInput}
+              value={nicknameDraft}
+              onChangeText={setNicknameDraft}
+              placeholder="輸入新暱稱"
+              placeholderTextColor="#8e8e93"
+              returnKeyType="done"
+              onSubmitEditing={handleSaveNickname}
+            />
+            <TouchableOpacity style={styles.nicknameSaveButton} onPress={handleSaveNickname} activeOpacity={0.7}>
+              <Text style={styles.nicknameSaveText}>完成</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       <FlatList
         ref={listRef}
         data={messages}
@@ -91,6 +137,80 @@ const styles = StyleSheet.create({
   messageText: { fontSize: 16, lineHeight: 22 },
   myText: { color: '#fff' },
   theirText: { color: '#000' },
+  nicknameRow: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e5ea',
+    backgroundColor: '#fff',
+  },
+  nicknameLabel: {
+    fontSize: 14,
+    color: '#6e6e73',
+    marginBottom: 6,
+  },
+  nicknameInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nicknameInput: {
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#f2f2f7',
+    borderRadius: 18,
+    color: '#000',
+    fontSize: 16,
+  },
+  nicknameSaveButton: {
+    marginLeft: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: '#0a84ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nicknameSaveText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e5ea',
+    backgroundColor: '#fff',
+  },
+  headerTextWrapper: {
+    marginLeft: 12,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+  },
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize: 14,
+    color: '#8e8e93',
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
   inputContainer: {
     position: 'absolute',
     left: 0,
