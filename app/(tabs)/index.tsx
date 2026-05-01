@@ -14,7 +14,7 @@ export default function ChatListScreen() {
     return (
       <TouchableOpacity
         style={styles.chatItem}
-        onPress={() => router.push(`/chat/${item.id}`)}
+        onPress={() => router.push({ pathname: '/chat/[id]', params: { id: item.id } })}
         activeOpacity={0.7}
       >
         <View style={[styles.avatar, { backgroundColor: item.accentColor }]}>
