@@ -1,126 +1,168 @@
-// app/chat/[id].tsx
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { IconSymbol } from '../../components/ui/icon-symbol';
-import { CONTACTS, INITIAL_MESSAGES } from '../../constants/mock-messenger';
+import { Ionicons } from '@expo/vector-icons';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { AppAvatar } from '@/components/app-avatar';
+import { Palette, Radius } from '@/constants/design';
+import { useAuth } from '@/contexts/auth-context';
+import { getOtherMember, sendMessage, subscribeChat, subscribeMessages } from '@/services/chat-service';
+import { ChatMessage, ChatSummary } from '@/types/user';
+import { formatMessageTime } from '@/utils/date';
 
 export default function ChatDetailScreen() {
-  const { id } = useLocalSearchParams();
-  const contact = CONTACTS.find(c => c.id === id); //[cite: 1]
-  const initialMessages = INITIAL_MESSAGES[id as string] || []; //[cite: 1]
-  const [messages, setMessages] = useState(initialMessages);
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const chatId = Array.isArray(id) ? id[0] : id;
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { user, profile } = useAuth();
+  const [chat, setChat] = useState<ChatSummary | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
-  const [nickname, setNickname] = useState(contact?.name ?? '');
-  const [nicknameDraft, setNicknameDraft] = useState(contact?.name ?? '');
-  const [isEditingNickname, setIsEditingNickname] = useState(false);
-  const listRef = useRef<FlatList<typeof initialMessages[0]> | null>(null);
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const listRef = useRef<FlatList<ChatMessage> | null>(null);
 
-  const handleSend = () => {
-    if (!draft.trim()) return;
+  useEffect(() => {
+    if (!chatId) return undefined;
 
-    const newMessage = {
-      id: `sent-${Date.now()}`,
-      contactId: id as string,
-      senderId: 'me',
-      text: draft.trim(),
-      createdAt: Date.now(),
-    };
-
-    setMessages((current) => [...current, newMessage]);
-    setDraft('');
-
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
+    const unsubscribeChat = subscribeChat(chatId, (nextChat) => {
+      setChat(nextChat);
+      setLoading(false);
     });
+    const unsubscribeMessages = subscribeMessages(chatId, (nextMessages) => {
+      setMessages(nextMessages);
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      });
+    });
+
+    return () => {
+      unsubscribeChat();
+      unsubscribeMessages();
+    };
+  }, [chatId]);
+
+  const otherMember = user && chat ? getOtherMember(chat, user.uid) : null;
+  const title = otherMember?.displayName ?? '聊天室';
+
+  const handleSend = async () => {
+    if (!chatId || !profile || !draft.trim()) return;
+
+    const messageText = draft;
+    setDraft('');
+    setSending(true);
+
+    try {
+      await sendMessage(chatId, profile, messageText);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const handleSaveNickname = () => {
-    const trimmed = nicknameDraft.trim();
-    if (!trimmed) return;
-    setNickname(trimmed);
-    setIsEditingNickname(false);
+  const renderMessage = ({ item }: { item: ChatMessage }) => {
+    const isMe = item.senderId === user?.uid;
+    const time = formatMessageTime(item.createdAt);
+
+    return (
+      <View style={[styles.messageLine, isMe ? styles.messageLineMe : styles.messageLineThem]}>
+        {!isMe ? (
+          <AppAvatar name={item.senderName} photoURL={item.senderPhotoURL} size={32} />
+        ) : null}
+        <View style={[styles.messageGroup, isMe && styles.messageGroupMe]}>
+          {!isMe ? <Text style={styles.senderName}>{item.senderName}</Text> : null}
+          <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble]}>
+            <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>{item.text}</Text>
+          </View>
+          <Text style={[styles.messageTime, isMe ? styles.messageTimeMe : styles.messageTimeThem]}>
+            {time || '傳送中'}
+          </Text>
+        </View>
+      </View>
+    );
   };
 
-  const handleEditNickname = () => {
-    setNicknameDraft(nickname);
-    setIsEditingNickname(true);
-  };
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator color={Palette.primary} size="large" />
+      </View>
+    );
+  }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={0}
+      style={styles.container}
     >
-      <Stack.Screen options={{ title: nickname || contact?.name || '聊天' }} />
+      <Stack.Screen options={{ title }} />
 
-      <View style={styles.headerRow}>
-        <TouchableOpacity style={[styles.avatar, { backgroundColor: contact?.accentColor ?? '#0a84ff' }]} onPress={handleEditNickname} activeOpacity={0.8}>
-          <Text style={styles.avatarText}>{contact?.name.charAt(0) ?? '?'}</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity
+          accessibilityLabel="返回"
+          activeOpacity={0.75}
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons name="chevron-back" size={28} color={Palette.primary} />
         </TouchableOpacity>
-        <View style={styles.headerTextWrapper}>
-          <Text style={styles.headerTitle}>{nickname || contact?.name || '聊天'}</Text>
-          {contact?.handle ? <Text style={styles.headerSubtitle}>{contact.handle}</Text> : null}
+        <AppAvatar name={title} photoURL={otherMember?.photoURL} size={42} />
+        <View style={styles.headerText}>
+          <Text numberOfLines={1} style={styles.headerTitle}>{title}</Text>
+          <Text numberOfLines={1} style={styles.headerSubtitle}>{otherMember?.email ?? chatId}</Text>
         </View>
       </View>
 
-      {isEditingNickname ? (
-        <View style={styles.nicknameRow}>
-          <Text style={styles.nicknameLabel}>編輯暱稱</Text>
-          <View style={styles.nicknameInputWrapper}>
-            <TextInput
-              style={styles.nicknameInput}
-              value={nicknameDraft}
-              onChangeText={setNicknameDraft}
-              placeholder="輸入新暱稱"
-              placeholderTextColor="#8e8e93"
-              returnKeyType="done"
-              onSubmitEditing={handleSaveNickname}
-            />
-            <TouchableOpacity style={styles.nicknameSaveButton} onPress={handleSaveNickname} activeOpacity={0.7}>
-              <Text style={styles.nicknameSaveText}>完成</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : null}
-
       <FlatList
         ref={listRef}
+        contentContainerStyle={messages.length ? styles.messagesContent : styles.emptyMessagesContent}
         data={messages}
-        keyExtractor={(item) => item.id} //[cite: 1]
-        contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
-        renderItem={({ item }) => {
-          const isMe = item.senderId === 'me';
-          return (
-            <View style={[
-              styles.messageWrapper,
-              isMe ? styles.messageWrapperMe : styles.messageWrapperThem
-            ]}>
-              <View style={[
-                styles.messageBubble, 
-                isMe ? styles.myBubble : styles.theirBubble
-              ]}>
-                <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>
-                  {item.text}
-                </Text>
-              </View>
+        keyExtractor={(item) => item.id}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="chatbubble-ellipses-outline" size={34} color={Palette.primary} />
             </View>
-          );
-        }}
+            <Text style={styles.emptyTitle}>尚無訊息</Text>
+            <Text style={styles.emptyText}>傳第一則訊息給 {title}。</Text>
+          </View>
+        }
+        renderItem={renderMessage}
       />
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <TextInput
-          style={styles.input}
-          value={draft}
+          multiline
           onChangeText={setDraft}
           placeholder="輸入訊息..."
-          placeholderTextColor="#8e8e93"
-          multiline
+          placeholderTextColor={Palette.faint}
+          style={styles.input}
+          value={draft}
         />
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend} activeOpacity={0.7}>
-          <IconSymbol name="paperplane.fill" size={20} color="#fff" />
+        <TouchableOpacity
+          accessibilityLabel="送出訊息"
+          activeOpacity={0.82}
+          disabled={!draft.trim() || sending}
+          onPress={handleSend}
+          style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]}
+        >
+          {sending ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Ionicons name="send" size={19} color="#fff" />
+          )}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -128,120 +170,174 @@ export default function ChatDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  messageWrapper: { flexDirection: 'row', marginBottom: 10 },
-  messageWrapperMe: { justifyContent: 'flex-end' },
-  messageWrapperThem: { justifyContent: 'flex-start' },
-  messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, maxWidth: '75%' },
-  myBubble: { backgroundColor: '#0a84ff' }, // 原版 Messenger 藍色[cite: 1]
-  theirBubble: { backgroundColor: '#f0f0f0' },
-  messageText: { fontSize: 16, lineHeight: 22 },
-  myText: { color: '#fff' },
-  theirText: { color: '#000' },
-  nicknameRow: {
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e5ea',
-    backgroundColor: '#fff',
-  },
-  nicknameLabel: {
-    fontSize: 14,
-    color: '#6e6e73',
-    marginBottom: 6,
-  },
-  nicknameInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  nicknameInput: {
+  container: {
+    backgroundColor: Palette.background,
     flex: 1,
-    minHeight: 40,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#f2f2f7',
-    borderRadius: 18,
-    color: '#000',
-    fontSize: 16,
   },
-  nicknameSaveButton: {
-    marginLeft: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 18,
-    backgroundColor: '#0a84ff',
+  loadingContainer: {
+    alignItems: 'center',
+    backgroundColor: Palette.background,
+    flex: 1,
     justifyContent: 'center',
+  },
+  header: {
     alignItems: 'center',
-  },
-  nicknameSaveText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  headerRow: {
+    backgroundColor: Palette.surface,
+    borderBottomColor: Palette.border,
+    borderBottomWidth: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e5ea',
-    backgroundColor: '#fff',
+    paddingBottom: 10,
+    paddingHorizontal: 8,
   },
-  headerTextWrapper: {
-    marginLeft: 12,
+  backButton: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  headerText: {
+    flex: 1,
+    marginLeft: 10,
+    minWidth: 0,
   },
   headerTitle: {
+    color: Palette.text,
     fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: '900',
   },
   headerSubtitle: {
+    color: Palette.muted,
+    fontSize: 13,
     marginTop: 2,
-    fontSize: 14,
-    color: '#8e8e93',
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  messagesContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 18,
+  },
+  emptyMessagesContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  avatarText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  inputContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+  messageLine: {
+    alignItems: 'flex-end',
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e5ea',
-    backgroundColor: '#fff',
+    marginBottom: 12,
   },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 110,
+  messageLineMe: {
+    justifyContent: 'flex-end',
+  },
+  messageLineThem: {
+    gap: 8,
+    justifyContent: 'flex-start',
+  },
+  messageGroup: {
+    maxWidth: '76%',
+  },
+  messageGroupMe: {
+    alignItems: 'flex-end',
+  },
+  senderName: {
+    color: Palette.muted,
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 4,
+    marginLeft: 3,
+  },
+  messageBubble: {
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginRight: 10,
-    backgroundColor: '#f2f2f7',
-    borderRadius: 20,
+  },
+  myBubble: {
+    backgroundColor: Palette.primary,
+    borderBottomRightRadius: 6,
+  },
+  theirBubble: {
+    backgroundColor: Palette.surface,
+    borderBottomLeftRadius: 6,
+    borderColor: Palette.border,
+    borderWidth: 1,
+  },
+  messageText: {
     fontSize: 16,
-    color: '#000',
+    lineHeight: 22,
+  },
+  myText: {
+    color: '#fff',
+  },
+  theirText: {
+    color: Palette.text,
+  },
+  messageTime: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  messageTimeMe: {
+    color: Palette.faint,
+    marginRight: 4,
+  },
+  messageTimeThem: {
+    color: Palette.faint,
+    marginLeft: 4,
+  },
+  inputBar: {
+    alignItems: 'flex-end',
+    backgroundColor: Palette.surface,
+    borderTopColor: Palette.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+    paddingTop: 10,
+  },
+  input: {
+    backgroundColor: Palette.background,
+    borderColor: Palette.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    color: Palette.text,
+    flex: 1,
+    fontSize: 16,
+    maxHeight: 112,
+    minHeight: 42,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#0a84ff',
-    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: Palette.primary,
+    borderRadius: 21,
+    height: 42,
+    justifyContent: 'center',
+    marginLeft: 8,
+    width: 42,
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#b8c7d9',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingHorizontal: 36,
+  },
+  emptyIcon: {
+    alignItems: 'center',
+    backgroundColor: Palette.primarySoft,
+    borderRadius: Radius.pill,
+    height: 62,
+    justifyContent: 'center',
+    width: 62,
+  },
+  emptyTitle: {
+    color: Palette.text,
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 14,
+  },
+  emptyText: {
+    color: Palette.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+    textAlign: 'center',
   },
 });
