@@ -103,17 +103,33 @@ export default function ChatListScreen() {
     const title = otherMember?.displayName ?? '未知使用者';
     const time = formatListTime(item.lastMessageAt ?? item.updatedAt);
     const senderPrefix = item.lastMessageSenderId === user.uid ? '你：' : '';
+    const unreadCount = item.unreadCounts?.[user.uid] ?? 0;
+    const unreadLabel = unreadCount > 3 ? '4+ 則訊息未查看' : `${unreadCount} 則訊息未查看`;
 
     return (
       <TouchableOpacity activeOpacity={0.74} onPress={() => openChat(item.id)} style={styles.listRow}>
-        <AppAvatar name={title} photoURL={otherMember?.photoURL} size={52} />
+        <View>
+          <AppAvatar name={title} photoURL={otherMember?.photoURL} size={52} />
+          {unreadCount > 0 ? <View style={styles.unreadDot} /> : null}
+        </View>
         <View style={styles.listRowBody}>
           <View style={styles.listRowTop}>
-            <Text numberOfLines={1} style={styles.listTitle}>{title}</Text>
-            {time ? <Text style={styles.listTime}>{time}</Text> : null}
+            <Text numberOfLines={1} style={[styles.listTitle, unreadCount > 0 && styles.unreadTitle]}>
+              {title}
+            </Text>
+            {time ? (
+              <Text style={[styles.listTime, unreadCount > 0 && styles.unreadTime]}>{time}</Text>
+            ) : null}
           </View>
-          <Text numberOfLines={1} style={styles.listSubtitle}>
-            {item.lastMessage ? `${senderPrefix}${item.lastMessage}` : '尚無訊息'}
+          <Text
+            numberOfLines={1}
+            style={[styles.listSubtitle, unreadCount > 0 && styles.unreadSubtitle]}
+          >
+            {unreadCount > 0
+              ? unreadLabel
+              : item.lastMessage
+                ? `${senderPrefix}${item.lastMessage}`
+                : '尚無訊息'}
           </Text>
         </View>
       </TouchableOpacity>
@@ -174,7 +190,15 @@ export default function ChatListScreen() {
           <Text style={styles.headerEyebrow}>Messenger</Text>
           <Text style={styles.headerTitle}>聊天</Text>
         </View>
-        <AppAvatar name={profile?.displayName ?? 'Me'} photoURL={profile?.photoURL} size={46} />
+        <TouchableOpacity
+          accessibilityLabel="前往帳號頁"
+          activeOpacity={0.75}
+          hitSlop={8}
+          onPress={() => router.push('/(tabs)/profile')}
+          style={styles.profileButton}
+        >
+          <AppAvatar name={profile?.displayName ?? 'Me'} photoURL={profile?.photoURL} size={46} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.summaryRow}>
@@ -314,6 +338,9 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '900',
     marginTop: 2,
+  },
+  profileButton: {
+    borderRadius: 23,
   },
   summaryRow: {
     ...Shadow.soft,
@@ -517,10 +544,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  unreadTime: {
+    color: Palette.danger,
+    fontWeight: '900',
+  },
   listSubtitle: {
     color: Palette.muted,
     fontSize: 14,
     marginTop: 4,
+  },
+  unreadDot: {
+    backgroundColor: Palette.danger,
+    borderColor: Palette.surface,
+    borderRadius: 7,
+    borderWidth: 2,
+    height: 14,
+    position: 'absolute',
+    right: -1,
+    top: -1,
+    width: 14,
+  },
+  unreadTitle: {
+    fontWeight: '900',
+  },
+  unreadSubtitle: {
+    color: Palette.danger,
+    fontWeight: '800',
   },
   rowIconButton: {
     alignItems: 'center',

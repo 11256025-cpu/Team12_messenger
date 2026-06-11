@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,8 +24,18 @@ function mergeProfile(profile: UserProfile, updates: Partial<UserProfile>) {
   return { ...profile, ...updates };
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
+}
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
   const { user, profile, updateAccount, changePassword, uploadAvatar, signOut } = useAuth();
   const [nameDraft, setNameDraft] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -33,10 +44,21 @@ export default function ProfileScreen() {
   const [savingName, setSavingName] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarPreviewUri, setAvatarPreviewUri] = useState<string | null>(null);
 
   useEffect(() => {
     setNameDraft(profile?.displayName ?? '');
   }, [profile?.displayName]);
+
+  useEffect(() => {
+    setAvatarPreviewUri(null);
+  }, [profile?.photoURL]);
+
+  useFocusEffect(
+    useCallback(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    }, []),
+  );
 
   const handleSaveName = async () => {
     if (!profile) return;
@@ -79,14 +101,26 @@ export default function ProfileScreen() {
 
     if (result.canceled) return;
 
+    const asset = result.assets[0];
+    setAvatarPreviewUri(asset.uri);
+
     try {
       setUploadingAvatar(true);
-      const photoURL = await uploadAvatar(result.assets[0].uri);
-      await updateAccount({ photoURL });
-      await createOrUpdateChatMember(profile.uid, mergeProfile(profile, { photoURL }));
+      const photoURL = await uploadAvatar(asset.uri, asset.file, asset.mimeType);
+      await withTimeout(
+        updateAccount({ photoURL }),
+        15000,
+        '頭像已上傳，但更新個人資料逾時，請重新整理後確認。',
+      );
+      void createOrUpdateChatMember(profile.uid, mergeProfile(profile, { photoURL })).catch((error) => {
+        console.warn('Unable to sync avatar to chat members:', error);
+      });
       Alert.alert('已更新', '頭像已儲存。');
-    } catch {
-      Alert.alert('上傳失敗', '請確認 Firebase Storage 已啟用，或稍後再試。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '請稍後再試。';
+      console.warn('Unable to upload avatar:', error);
+      setAvatarPreviewUri(null);
+      Alert.alert('上傳失敗', message);
     } finally {
       setUploadingAvatar(false);
     }
@@ -129,6 +163,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView
       contentContainerStyle={styles.content}
+      ref={scrollViewRef}
       showsVerticalScrollIndicator={false}
       style={[styles.container, { paddingTop: insets.top }]}
     >
@@ -140,7 +175,11 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.identityCard}>
-        <AppAvatar name={profile?.displayName ?? 'Me'} photoURL={profile?.photoURL} size={92} />
+        <AppAvatar
+          name={profile?.displayName ?? 'Me'}
+          photoURL={avatarPreviewUri ?? profile?.photoURL}
+          size={92}
+        />
         <View style={styles.identityText}>
           <Text numberOfLines={1} style={styles.identityName}>{profile?.displayName ?? '未命名'}</Text>
           <Text numberOfLines={1} style={styles.identityEmail}>{profile?.email ?? user?.email ?? ''}</Text>

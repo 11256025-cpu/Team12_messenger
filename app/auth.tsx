@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Palette, Radius, Shadow } from '@/constants/design';
+import { Palette } from '@/constants/design';
 import { useAuth } from '@/contexts/auth-context';
 
 type Mode = 'login' | 'register';
@@ -55,6 +56,14 @@ export default function AuthScreen() {
   const [error, setError] = useState('');
 
   const isRegistering = mode === 'register';
+
+  const changeMode = (nextMode: Mode) => {
+    if (nextMode === mode) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setMode(nextMode);
+    setError('');
+  };
 
   const handleSubmit = async () => {
     const cleanEmail = email.trim();
@@ -114,10 +123,7 @@ export default function AuthScreen() {
           <View style={styles.segmentedControl}>
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => {
-                setMode('login');
-                setError('');
-              }}
+              onPress={() => changeMode('login')}
               style={[styles.segmentButton, mode === 'login' && styles.segmentButtonActive]}
             >
               <Text style={[styles.segmentText, mode === 'login' && styles.segmentTextActive]}>
@@ -126,10 +132,7 @@ export default function AuthScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => {
-                setMode('register');
-                setError('');
-              }}
+              onPress={() => changeMode('register')}
               style={[styles.segmentButton, mode === 'register' && styles.segmentButtonActive]}
             >
               <Text style={[styles.segmentText, mode === 'register' && styles.segmentTextActive]}>
@@ -242,120 +245,139 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   keyboard: {
-    backgroundColor: Palette.background,
+    backgroundColor: '#fafafa',
     flex: 1,
   },
   container: {
     alignItems: 'center',
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     padding: 20,
   },
   brand: {
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 24,
+    gap: 12,
+    marginBottom: 28,
   },
   logoMark: {
     alignItems: 'center',
-    backgroundColor: Palette.primary,
-    borderRadius: 14,
-    height: 56,
+    backgroundColor: '#762A5B',
+    borderColor: '#ffffff',
+    borderRadius: 36,
+    borderWidth: 4,
+    height: 72,
     justifyContent: 'center',
-    width: 56,
+    shadowColor: '#762A5B',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    width: 72,
+    elevation: 4,
   },
   brandName: {
     color: Palette.text,
-    fontSize: 28,
-    fontWeight: '900',
+    fontSize: 27,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   panel: {
-    ...Shadow.soft,
     backgroundColor: Palette.surface,
-    borderColor: Palette.border,
-    borderRadius: Radius.card,
+    borderColor: '#ececf0',
+    borderRadius: 26,
     borderWidth: 1,
-    padding: 18,
+    maxWidth: 460,
+    padding: 24,
+    shadowColor: '#25252d',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.07,
+    shadowRadius: 28,
     width: '100%',
-    maxWidth: 520,
+    elevation: 3,
   },
   title: {
     color: Palette.text,
-    fontSize: 28,
-    fontWeight: '900',
-    marginBottom: 18,
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    marginBottom: 20,
   },
   segmentedControl: {
-    backgroundColor: Palette.surfaceAlt,
-    borderRadius: Radius.card,
+    backgroundColor: '#f3f3f5',
+    borderRadius: 18,
     flexDirection: 'row',
-    padding: 4,
+    padding: 5,
   },
   segmentButton: {
     alignItems: 'center',
-    borderRadius: 6,
+    borderRadius: 14,
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 11,
   },
   segmentButtonActive: {
     backgroundColor: Palette.surface,
+    shadowColor: '#25252d',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   segmentText: {
-    color: Palette.muted,
+    color: '#777780',
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   segmentTextActive: {
-    color: Palette.primary,
+    color: '#762A5B',
   },
   form: {
-    gap: 15,
-    marginTop: 18,
+    gap: 17,
+    marginTop: 22,
   },
   inputGroup: {
-    gap: 7,
+    gap: 8,
   },
   label: {
-    color: Palette.text,
+    color: '#35353d',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
+    marginLeft: 3,
   },
   input: {
-    backgroundColor: Palette.background,
-    borderColor: Palette.border,
-    borderRadius: Radius.control,
+    backgroundColor: '#f7f7f8',
+    borderColor: '#e7e7eb',
+    borderRadius: 16,
     borderWidth: 1,
     color: Palette.text,
     fontSize: 16,
-    minHeight: 50,
-    paddingHorizontal: 13,
+    minHeight: 54,
+    paddingHorizontal: 16,
   },
   passwordRow: {
     alignItems: 'center',
-    backgroundColor: Palette.background,
-    borderColor: Palette.border,
-    borderRadius: Radius.control,
+    backgroundColor: '#f7f7f8',
+    borderColor: '#e7e7eb',
+    borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
-    minHeight: 50,
+    minHeight: 54,
   },
   passwordInput: {
     color: Palette.text,
     flex: 1,
     fontSize: 16,
-    paddingHorizontal: 13,
+    paddingHorizontal: 16,
   },
   iconButton: {
     alignItems: 'center',
-    height: 50,
+    height: 54,
     justifyContent: 'center',
-    width: 50,
+    width: 54,
   },
   errorBox: {
     alignItems: 'center',
     backgroundColor: Palette.dangerSoft,
     borderColor: '#ffd5d2',
-    borderRadius: Radius.card,
+    borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
@@ -370,12 +392,17 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     alignItems: 'center',
-    backgroundColor: Palette.primary,
-    borderRadius: Radius.control,
+    backgroundColor: '#762A5B',
+    borderRadius: 18,
     flexDirection: 'row',
     gap: 8,
     justifyContent: 'center',
-    minHeight: 52,
+    minHeight: 54,
+    shadowColor: '#762A5B',
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 3,
   },
   submitButtonDisabled: {
     opacity: 0.7,
@@ -383,6 +410,6 @@ const styles = StyleSheet.create({
   submitText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '900',
+    fontWeight: '800',
   },
 });

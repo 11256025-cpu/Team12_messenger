@@ -31,6 +31,7 @@ export type ChatSummary = {
   lastMessage: string | null;
   lastMessageAt?: Timestamp | null;
   lastMessageSenderId?: string | null;
+  unreadCounts?: Record<string, number>;
   updatedAt?: Timestamp;
   createdAt?: Timestamp;
 };

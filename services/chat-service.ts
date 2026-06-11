@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -110,6 +111,10 @@ export async function addFriend(currentUid: string, friendUid: string) {
     lastMessage: null,
     lastMessageAt: null,
     lastMessageSenderId: null,
+    unreadCounts: {
+      [currentUid]: 0,
+      [friendUid]: 0,
+    },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   }, { merge: true });
@@ -210,6 +215,14 @@ export async function sendMessage(chatId: string, sender: UserProfile, text: str
   if (!trimmed) return;
 
   const chatRef = doc(db, 'chats', chatId);
+  const chatSnapshot = await getDoc(chatRef);
+
+  if (!chatSnapshot.exists()) {
+    throw new Error('找不到聊天室');
+  }
+
+  const chat = chatSnapshot.data() as ChatSummary;
+  const recipientUid = chat.members.find((uid) => uid !== sender.uid);
   const messageRef = doc(collection(db, 'chats', chatId, 'messages'));
   const batch = writeBatch(db);
 
@@ -222,14 +235,27 @@ export async function sendMessage(chatId: string, sender: UserProfile, text: str
     createdAt: serverTimestamp(),
   });
 
-  batch.update(chatRef, {
+  const chatUpdates: Record<string, unknown> = {
     lastMessage: trimmed,
     lastMessageAt: serverTimestamp(),
     lastMessageSenderId: sender.uid,
     updatedAt: serverTimestamp(),
-  });
+    [`unreadCounts.${sender.uid}`]: 0,
+  };
+
+  if (recipientUid) {
+    chatUpdates[`unreadCounts.${recipientUid}`] = increment(1);
+  }
+
+  batch.update(chatRef, chatUpdates);
 
   await batch.commit();
+}
+
+export async function markChatRead(chatId: string, uid: string) {
+  await updateDoc(doc(db, 'chats', chatId), {
+    [`unreadCounts.${uid}`]: 0,
+  });
 }
 
 export async function createOrUpdateChatMember(uid: string, profile: UserProfile) {

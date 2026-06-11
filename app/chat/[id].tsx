@@ -17,7 +17,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppAvatar } from '@/components/app-avatar';
 import { Palette, Radius } from '@/constants/design';
 import { useAuth } from '@/contexts/auth-context';
-import { getOtherMember, sendMessage, subscribeChat, subscribeMessages } from '@/services/chat-service';
+import {
+  getOtherMember,
+  markChatRead,
+  sendMessage,
+  subscribeChat,
+  subscribeMessages,
+} from '@/services/chat-service';
 import { ChatMessage, ChatSummary } from '@/types/user';
 import { formatMessageTime } from '@/utils/date';
 
@@ -53,6 +59,14 @@ export default function ChatDetailScreen() {
       unsubscribeMessages();
     };
   }, [chatId]);
+
+  useEffect(() => {
+    if (!chatId || !user || !chat?.unreadCounts?.[user.uid]) return;
+
+    void markChatRead(chatId, user.uid).catch((error) => {
+      console.warn('Unable to mark chat as read:', error);
+    });
+  }, [chat?.unreadCounts, chatId, user]);
 
   const otherMember = user && chat ? getOtherMember(chat, user.uid) : null;
   const title = otherMember?.displayName ?? '聊天室';

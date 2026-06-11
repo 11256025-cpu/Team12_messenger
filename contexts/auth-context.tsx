@@ -27,7 +27,7 @@ type AuthContextValue = {
   signOut: () => Promise<void>;
   updateAccount: (updates: { displayName?: string; photoURL?: string | null }) => Promise<void>;
   changePassword: (currentPassword: string, nextPassword: string) => Promise<void>;
-  uploadAvatar: (uri: string) => Promise<string>;
+  uploadAvatar: (uri: string, file?: Blob | null, mimeType?: string | null) => Promise<string>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -38,6 +38,23 @@ function normalizeEmail(email: string) {
 
 function fallbackName(email: string) {
   return email.split('@')[0] || 'New user';
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function ensureUserProfile(currentUser: User) {
@@ -190,17 +207,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await reauthenticateWithCredential(auth.currentUser, credential);
       await updatePassword(auth.currentUser, nextPassword);
     },
-    uploadAvatar: async (uri) => {
+    uploadAvatar: async (uri, file, mimeType) => {
       if (!auth.currentUser) {
         throw new Error('尚未登入');
       }
 
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const avatarRef = ref(storage, `avatars/${auth.currentUser.uid}/${Date.now()}.jpg`);
+      let uploadData: Blob;
 
-      await uploadBytes(avatarRef, blob);
-      return getDownloadURL(avatarRef);
+      if (file) {
+        uploadData = file;
+      } else {
+        const response = await withTimeout(fetch(uri), 15000, '讀取圖片逾時，請重新選擇圖片。');
+
+        if (!response.ok) {
+          throw new Error(`無法讀取圖片 (${response.status})`);
+        }
+
+        uploadData = await withTimeout(response.blob(), 15000, '處理圖片逾時，請重新選擇圖片。');
+      }
+
+      const extension = mimeType?.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const avatarRef = ref(storage, `avatars/${auth.currentUser.uid}/avatar-${Date.now()}.${extension}`);
+      const uploadResult = await withTimeout(
+        uploadBytes(avatarRef, uploadData, {
+          contentType: mimeType || uploadData.type || 'image/jpeg',
+        }),
+        30000,
+        '圖片上傳逾時，請檢查 Firebase Storage 設定與網路連線。',
+      );
+
+      return withTimeout(
+        getDownloadURL(uploadResult.ref),
+        15000,
+        '取得頭像網址逾時，請稍後再試。',
+      );
     },
   }), [dataError, loading, profile, user]);
 
