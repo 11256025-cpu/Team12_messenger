@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -13,8 +14,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 
 import { AppAvatar } from '@/components/app-avatar';
+import { auth, db } from '@/firebaseConfig';
 import { Palette, Radius, Shadow } from '@/constants/design';
 import { useAuth } from '@/contexts/auth-context';
 import { createOrUpdateChatMember } from '@/services/chat-service';
@@ -36,7 +39,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
-  const { user, profile, updateAccount, changePassword, uploadAvatar, signOut } = useAuth();
+  const { user, profile, updateAccount, changePassword, signOut } = useAuth();
   const [nameDraft, setNameDraft] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [nextPassword, setNextPassword] = useState('');
@@ -45,6 +48,7 @@ export default function ProfileScreen() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarPreviewUri, setAvatarPreviewUri] = useState<string | null>(null);
+  const [storedAvatarUrl, setStoredAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setNameDraft(profile?.displayName ?? '');
@@ -53,6 +57,40 @@ export default function ProfileScreen() {
   useEffect(() => {
     setAvatarPreviewUri(null);
   }, [profile?.photoURL]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadStoredAvatar() {
+      if (!profile?.uid) {
+        return;
+      }
+
+      try {
+        const userRef = doc(db, 'users', profile.uid);
+        const snapshot = await getDoc(userRef);
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (typeof data.avatar_url === 'string') {
+            setStoredAvatarUrl(data.avatar_url);
+          }
+        }
+      } catch (error) {
+        console.warn('Unable to load stored avatar:', error);
+      }
+    }
+
+    loadStoredAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile?.uid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,7 +121,9 @@ export default function ProfileScreen() {
   };
 
   const handlePickAvatar = async () => {
-    if (!profile) return;
+    if (!profile) {
+      return;
+    }
 
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -96,31 +136,81 @@ export default function ProfileScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.82,
+      quality: 0.1,
+      base64: true,
     });
 
     if (result.canceled) return;
 
     const asset = result.assets[0];
-    setAvatarPreviewUri(asset.uri);
+    const base64Data = asset.base64;
+    const normalizedUri = asset.uri?.toLowerCase() ?? '';
+    const isPng = normalizedUri.endsWith('.png');
+
+    const createDataUri = (mime: string, base64String: string) => `data:${mime};base64,${base64String}`;
+    const isUnderLimit = (dataUri: string) => dataUri.length <= 1048487;
+
+    let avatarData: string | null = null;
+
+    if (base64Data) {
+      const initialMime = isPng ? 'image/png' : 'image/jpeg';
+      const initialData = createDataUri(initialMime, base64Data);
+      if (isUnderLimit(initialData)) {
+        avatarData = initialData;
+      }
+    }
+
+    if (!avatarData) {
+      const manipResult = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 400, height: 400 } }],
+        {
+          compress: 0.3,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        },
+      );
+
+      if (!manipResult.base64) {
+        Alert.alert('上傳失敗', '無法轉換圖片，請重新選擇。');
+        return;
+      }
+
+      const compressedData = createDataUri('image/jpeg', manipResult.base64);
+      if (!isUnderLimit(compressedData)) {
+        Alert.alert('上傳失敗', '圖片仍然太大，請選擇解析度更低的圖片。');
+        return;
+      }
+
+      avatarData = compressedData;
+    }
+
+    setAvatarPreviewUri(avatarData);
+
+    if (!auth.currentUser?.uid) {
+      Alert.alert('錯誤', '無法取得使用者身份，請重新登入。');
+      setAvatarPreviewUri(null);
+      return;
+    }
+
+    const userRef = doc(db, 'users', auth.currentUser.uid);
+    const firestoreUpdate = {
+      avatar_url: avatarData,
+      photoURL: avatarData,
+      updatedAt: serverTimestamp(),
+    };
 
     try {
       setUploadingAvatar(true);
-      const photoURL = await uploadAvatar(asset.uri, asset.file, asset.mimeType);
-      await withTimeout(
-        updateAccount({ photoURL }),
-        15000,
-        '頭像已上傳，但更新個人資料逾時，請重新整理後確認。',
-      );
-      void createOrUpdateChatMember(profile.uid, mergeProfile(profile, { photoURL })).catch((error) => {
-        console.warn('Unable to sync avatar to chat members:', error);
-      });
+      await updateDoc(userRef, firestoreUpdate);
+      setStoredAvatarUrl(avatarData);
+      await createOrUpdateChatMember(profile.uid, mergeProfile(profile, { photoURL: avatarData }));
       Alert.alert('已更新', '頭像已儲存。');
     } catch (error) {
-      const message = error instanceof Error ? error.message : '請稍後再試。';
-      console.warn('Unable to upload avatar:', error);
-      setAvatarPreviewUri(null);
-      Alert.alert('上傳失敗', message);
+      await setDoc(userRef, firestoreUpdate, { merge: true });
+      setStoredAvatarUrl(avatarData);
+      await createOrUpdateChatMember(profile.uid, mergeProfile(profile, { photoURL: avatarData }));
+      Alert.alert('已更新', '頭像已儲存。');
     } finally {
       setUploadingAvatar(false);
     }
@@ -177,7 +267,7 @@ export default function ProfileScreen() {
       <View style={styles.identityCard}>
         <AppAvatar
           name={profile?.displayName ?? 'Me'}
-          photoURL={avatarPreviewUri ?? profile?.photoURL}
+          photoURL={avatarPreviewUri ?? storedAvatarUrl ?? profile?.photoURL}
           size={92}
         />
         <View style={styles.identityText}>
