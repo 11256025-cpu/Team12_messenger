@@ -28,6 +28,15 @@ import { formatListTime } from '@/utils/date';
 
 type ListMode = 'chats' | 'friends';
 
+function messagePreview(message: string | null, maxLength = 7) {
+  if (!message) return '';
+
+  const normalized = message.trim().replace(/\s+/g, ' ');
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}...`
+    : normalized;
+}
+
 export default function ChatListScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -105,6 +114,7 @@ export default function ChatListScreen() {
     const senderPrefix = item.lastMessageSenderId === user.uid ? '你：' : '';
     const unreadCount = item.unreadCounts?.[user.uid] ?? 0;
     const unreadLabel = unreadCount > 3 ? '4+ 則訊息未查看' : `${unreadCount} 則訊息未查看`;
+    const unreadPreview = messagePreview(item.lastMessage);
 
     return (
       <TouchableOpacity activeOpacity={0.74} onPress={() => openChat(item.id)} style={styles.listRow}>
@@ -126,7 +136,7 @@ export default function ChatListScreen() {
             style={[styles.listSubtitle, unreadCount > 0 && styles.unreadSubtitle]}
           >
             {unreadCount > 0
-              ? unreadLabel
+              ? `${unreadLabel}${unreadPreview ? `・${unreadPreview}` : ''}`
               : item.lastMessage
                 ? `${senderPrefix}${item.lastMessage}`
                 : '尚無訊息'}
