@@ -245,7 +245,7 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   keyboard: {
-    backgroundColor: '#fafafa',
+    backgroundColor: Palette.background,
     flex: 1,
   },
   container: {
@@ -261,13 +261,13 @@ const styles = StyleSheet.create({
   },
   logoMark: {
     alignItems: 'center',
-    backgroundColor: '#762A5B',
+    backgroundColor: Palette.primary,
     borderColor: '#ffffff',
     borderRadius: 36,
     borderWidth: 4,
     height: 72,
     justifyContent: 'center',
-    shadowColor: '#762A5B',
+    shadowColor: Palette.primary,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 18,
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   },
   panel: {
     backgroundColor: Palette.surface,
-    borderColor: '#ececf0',
+    borderColor: Palette.border,
     borderRadius: 26,
     borderWidth: 1,
     maxWidth: 460,
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   segmentedControl: {
-    backgroundColor: '#f3f3f5',
+    backgroundColor: Palette.surfaceAlt,
     borderRadius: 18,
     flexDirection: 'row',
     padding: 5,
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   segmentTextActive: {
-    color: '#762A5B',
+    color: Palette.primary,
   },
   form: {
     gap: 17,
@@ -343,8 +343,8 @@ const styles = StyleSheet.create({
     marginLeft: 3,
   },
   input: {
-    backgroundColor: '#f7f7f8',
-    borderColor: '#e7e7eb',
+    backgroundColor: Palette.background,
+    borderColor: Palette.border,
     borderRadius: 16,
     borderWidth: 1,
     color: Palette.text,
@@ -354,8 +354,8 @@ const styles = StyleSheet.create({
   },
   passwordRow: {
     alignItems: 'center',
-    backgroundColor: '#f7f7f8',
-    borderColor: '#e7e7eb',
+    backgroundColor: Palette.background,
+    borderColor: Palette.border,
     borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
@@ -392,13 +392,13 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     alignItems: 'center',
-    backgroundColor: '#762A5B',
+    backgroundColor: Palette.primary,
     borderRadius: 18,
     flexDirection: 'row',
     gap: 8,
     justifyContent: 'center',
     minHeight: 54,
-    shadowColor: '#762A5B',
+    shadowColor: Palette.primary,
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.18,
     shadowRadius: 14,
