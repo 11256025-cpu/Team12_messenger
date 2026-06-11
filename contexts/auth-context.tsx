@@ -9,7 +9,7 @@ import {
   updatePassword,
   updateProfile,
 } from 'firebase/auth';
-import { doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 
@@ -60,10 +60,13 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 async function ensureUserProfile(currentUser: User) {
   const email = normalizeEmail(currentUser.email ?? '');
   const displayName = currentUser.displayName?.trim() || fallbackName(email);
-  const photoURL = currentUser.photoURL ?? null;
+  const userRef = doc(db, 'users', currentUser.uid);
+  const existingSnapshot = await getDoc(userRef);
+  const existingData = existingSnapshot.exists() ? (existingSnapshot.data() as Partial<UserProfile>) : null;
+  const photoURL = existingData?.photoURL ?? currentUser.photoURL ?? null;
 
   await setDoc(
-    doc(db, 'users', currentUser.uid),
+    userRef,
     {
       uid: currentUser.uid,
       email,

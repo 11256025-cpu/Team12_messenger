@@ -202,11 +202,13 @@ export default function ProfileScreen() {
 
     try {
       setUploadingAvatar(true);
+      await updateAccount({ photoURL: avatarData });
       await updateDoc(userRef, firestoreUpdate);
       setStoredAvatarUrl(avatarData);
       await createOrUpdateChatMember(profile.uid, mergeProfile(profile, { photoURL: avatarData }));
       Alert.alert('已更新', '頭像已儲存。');
     } catch (error) {
+      // 如果 user document 尚未存在，使用 merge: true 來建立並保留其他欄位
       await setDoc(userRef, firestoreUpdate, { merge: true });
       setStoredAvatarUrl(avatarData);
       await createOrUpdateChatMember(profile.uid, mergeProfile(profile, { photoURL: avatarData }));
