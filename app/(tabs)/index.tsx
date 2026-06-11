@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   StyleSheet,
   Text,
   TextInput,
@@ -17,13 +18,16 @@ import { AppAvatar } from '@/components/app-avatar';
 import { Palette, Radius, Shadow } from '@/constants/design';
 import { useAuth } from '@/contexts/auth-context';
 import {
-  addFriend,
+  acceptFriendRequest,
   getOtherMember,
+  rejectFriendRequest,
   searchUsers,
+  sendFriendRequest,
   subscribeChats,
+  subscribeFriendRequests,
   subscribeFriends,
 } from '@/services/chat-service';
-import { ChatSummary, FriendProfile, UserProfile } from '@/types/user';
+import { ChatSummary, FriendProfile, FriendRequest, UserProfile } from '@/types/user';
 import { formatListTime } from '@/utils/date';
 
 type ListMode = 'chats' | 'friends';
@@ -45,9 +49,14 @@ export default function ChatListScreen() {
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [searchText, setSearchText] = useState('');
-  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [addingUid, setAddingUid] = useState<string | null>(null);
+  const [friendResults, setFriendResults] = useState<FriendProfile[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [addSearchText, setAddSearchText] = useState('');
+  const [addSearchResults, setAddSearchResults] = useState<UserProfile[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+  const [sendingRequestUid, setSendingRequestUid] = useState<string | null>(null);
+  const [handlingRequestId, setHandlingRequestId] = useState<string | null>(null);
 
   const friendIds = useMemo(() => new Set(friends.map((friend) => friend.uid)), [friends]);
 
@@ -56,10 +65,12 @@ export default function ChatListScreen() {
 
     const unsubscribeFriends = subscribeFriends(user.uid, setFriends);
     const unsubscribeChats = subscribeChats(user.uid, setChats);
+    const unsubscribeRequests = subscribeFriendRequests(user.uid, setFriendRequests);
 
     return () => {
       unsubscribeFriends();
       unsubscribeChats();
+      unsubscribeRequests();
     };
   }, [user]);
 
@@ -67,41 +78,69 @@ export default function ChatListScreen() {
     router.push({ pathname: '/chat/[id]', params: { id: chatId } });
   };
 
-  const handleSearch = async () => {
-    if (!user) return;
-
-    const keyword = searchText.trim();
+  const handleFriendSearch = () => {
+    const keyword = searchText.trim().toLowerCase();
 
     if (!keyword) {
-      setSearchResults([]);
+      setFriendResults([]);
       return;
     }
 
+    setFriendResults(friends.filter((friend) => (
+      friend.displayName.toLowerCase().includes(keyword)
+      || friend.email.toLowerCase().includes(keyword)
+      || friend.uid.toLowerCase().includes(keyword)
+    )));
+  };
+
+  const handleUserSearch = async () => {
+    if (!user || !addSearchText.trim()) return;
+
     try {
-      setSearching(true);
-      const results = await searchUsers(keyword, user.uid);
-      setSearchResults(results);
-    } catch {
-      Alert.alert('搜尋失敗', '請稍後再試一次。');
+      setSearchingUsers(true);
+      const results = await searchUsers(addSearchText, user.uid);
+      setAddSearchResults(results);
+    } catch (error) {
+      Alert.alert('搜尋失敗', error instanceof Error ? error.message : '請稍後再試。');
     } finally {
-      setSearching(false);
+      setSearchingUsers(false);
     }
   };
 
-  const handleAddFriend = async (friendUid: string) => {
-    if (!user) return;
+  const handleSendRequest = async (recipientUid: string) => {
+    if (!profile) return;
 
     try {
-      setAddingUid(friendUid);
-      const chatId = await addFriend(user.uid, friendUid);
-      setMode('chats');
-      setSearchText('');
-      setSearchResults([]);
-      openChat(chatId);
+      setSendingRequestUid(recipientUid);
+      await sendFriendRequest(profile, recipientUid);
+      Alert.alert('已送出邀請', '對方接受後才會成為好友。');
     } catch (error) {
-      Alert.alert('加入失敗', error instanceof Error ? error.message : '請稍後再試。');
+      Alert.alert('無法送出邀請', error instanceof Error ? error.message : '請稍後再試。');
     } finally {
-      setAddingUid(null);
+      setSendingRequestUid(null);
+    }
+  };
+
+  const handleAcceptRequest = async (request: FriendRequest) => {
+    try {
+      setHandlingRequestId(request.id);
+      await acceptFriendRequest(request);
+      Alert.alert('已成為好友', `你和 ${request.sender.displayName} 現在是好友。`);
+    } catch (error) {
+      Alert.alert('接受失敗', error instanceof Error ? error.message : '請稍後再試。');
+    } finally {
+      setHandlingRequestId(null);
+    }
+  };
+
+  const handleRejectRequest = async (request: FriendRequest) => {
+    try {
+      setHandlingRequestId(request.id);
+      await rejectFriendRequest(request.id);
+    } catch {
+      Alert.alert('拒絕失敗', '請稍後再試。');
+    } finally {
+      setHandlingRequestId(null);
     }
   };
 
@@ -159,9 +198,24 @@ export default function ChatListScreen() {
     </TouchableOpacity>
   );
 
-  const renderSearchResult = ({ item }: { item: UserProfile }) => {
+  const renderFriendResult = ({ item }: { item: FriendProfile }) => (
+    <TouchableOpacity
+      activeOpacity={0.76}
+      onPress={() => openChat(item.chatId)}
+      style={styles.searchResultRow}
+    >
+      <AppAvatar name={item.displayName} photoURL={item.photoURL} size={42} />
+      <View style={styles.searchResultBody}>
+        <Text numberOfLines={1} style={styles.searchResultName}>{item.displayName}</Text>
+        <Text numberOfLines={1} style={styles.searchResultEmail}>{item.email}</Text>
+      </View>
+      <Ionicons name="chatbubble-ellipses" size={20} color={Palette.primary} />
+    </TouchableOpacity>
+  );
+
+  const renderAddResult = ({ item }: { item: UserProfile }) => {
     const isFriend = friendIds.has(item.uid);
-    const isAdding = addingUid === item.uid;
+    const isSending = sendingRequestUid === item.uid;
 
     return (
       <View style={styles.searchResultRow}>
@@ -172,17 +226,17 @@ export default function ChatListScreen() {
         </View>
         <TouchableOpacity
           activeOpacity={0.82}
-          disabled={isFriend || isAdding}
-          onPress={() => handleAddFriend(item.uid)}
-          style={[styles.addButton, isFriend && styles.addButtonDone, isAdding && styles.addButtonDisabled]}
+          disabled={isFriend || isSending}
+          onPress={() => handleSendRequest(item.uid)}
+          style={[styles.addButton, isFriend && styles.addButtonDone, isSending && styles.addButtonDisabled]}
         >
-          {isAdding ? (
+          {isSending ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
-              <Ionicons name={isFriend ? 'checkmark' : 'person-add'} size={16} color={isFriend ? Palette.success : '#fff'} />
+              <Ionicons name={isFriend ? 'checkmark' : 'paper-plane'} size={16} color={isFriend ? Palette.success : '#fff'} />
               <Text style={[styles.addButtonText, isFriend && styles.addButtonDoneText]}>
-                {isFriend ? '已加入' : '加入'}
+                {isFriend ? '已是好友' : '邀請'}
               </Text>
             </>
           )}
@@ -231,39 +285,105 @@ export default function ChatListScreen() {
           </View>
         ) : null}
 
-        <View style={styles.searchInputRow}>
-          <Ionicons name="search" size={20} color={Palette.faint} />
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={setSearchText}
-            onSubmitEditing={handleSearch}
-            placeholder="名字、Email 或 UID"
-            placeholderTextColor={Palette.faint}
-            returnKeyType="search"
-            style={styles.searchInput}
-            value={searchText}
-          />
+        <View style={styles.searchActions}>
+          <View style={styles.searchInputRow}>
+            <Ionicons name="search" size={20} color={Palette.faint} />
+            <TextInput
+              autoCapitalize="none"
+              onChangeText={(text) => {
+                setSearchText(text);
+                if (!text.trim()) setFriendResults([]);
+              }}
+              onSubmitEditing={handleFriendSearch}
+              placeholder="搜尋現有好友"
+              placeholderTextColor={Palette.faint}
+              returnKeyType="search"
+              style={styles.searchInput}
+              value={searchText}
+            />
+            <TouchableOpacity
+              accessibilityLabel="搜尋現有好友"
+              activeOpacity={0.82}
+              onPress={handleFriendSearch}
+              style={styles.searchButton}
+            >
+              <Ionicons name="arrow-forward" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
-            accessibilityLabel="搜尋好友"
+            accessibilityLabel="新增好友"
             activeOpacity={0.82}
-            onPress={handleSearch}
-            style={styles.searchButton}
+            onPress={() => setAddModalVisible(true)}
+            style={styles.addFriendButton}
           >
-            {searching ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-forward" size={18} color="#fff" />}
+            <Ionicons name="person-add" size={18} color="#fff" />
+            <Text style={styles.addFriendButtonText}>新增好友</Text>
           </TouchableOpacity>
         </View>
 
-        {searchResults.length > 0 ? (
+        {friendResults.length > 0 ? (
           <View style={styles.searchResults}>
             <FlatList
-              data={searchResults}
+              data={friendResults}
               keyExtractor={(item) => item.uid}
-              renderItem={renderSearchResult}
+              renderItem={renderFriendResult}
               scrollEnabled={false}
             />
           </View>
         ) : null}
       </View>
+
+      {friendRequests.length > 0 ? (
+        <View style={styles.requestPanel}>
+          <View style={styles.requestHeader}>
+            <Text style={styles.requestTitle}>好友邀請</Text>
+            <View style={styles.requestBadge}>
+              <Text style={styles.requestBadgeText}>{friendRequests.length}</Text>
+            </View>
+          </View>
+          {friendRequests.map((request) => {
+            const isHandling = handlingRequestId === request.id;
+
+            return (
+              <View key={request.id} style={styles.requestRow}>
+                <AppAvatar
+                  name={request.sender.displayName}
+                  photoURL={request.sender.photoURL}
+                  size={44}
+                />
+                <View style={styles.requestBody}>
+                  <Text numberOfLines={1} style={styles.requestName}>
+                    {request.sender.displayName}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.requestEmail}>
+                    {request.sender.email}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  disabled={isHandling}
+                  onPress={() => handleRejectRequest(request)}
+                  style={styles.rejectButton}
+                >
+                  <Text style={styles.rejectButtonText}>拒絕</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  disabled={isHandling}
+                  onPress={() => handleAcceptRequest(request)}
+                  style={styles.acceptButton}
+                >
+                  {isHandling ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.acceptButtonText}>接受</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
 
       <View style={styles.segmentedControl}>
         <TouchableOpacity
@@ -317,6 +437,76 @@ export default function ChatListScreen() {
           renderItem={renderFriend}
         />
       )}
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setAddModalVisible(false)}
+        transparent
+        visible={addModalVisible}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>新增好友</Text>
+                <Text style={styles.modalSubtitle}>搜尋後送出邀請，對方接受才會成為好友。</Text>
+              </View>
+              <TouchableOpacity
+                accessibilityLabel="關閉"
+                onPress={() => setAddModalVisible(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={22} color={Palette.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalSearchRow}>
+              <Ionicons name="search" size={20} color={Palette.faint} />
+              <TextInput
+                autoCapitalize="none"
+                autoFocus
+                onChangeText={(text) => {
+                  setAddSearchText(text);
+                  if (!text.trim()) setAddSearchResults([]);
+                }}
+                onSubmitEditing={handleUserSearch}
+                placeholder="輸入名字、Email 或 UID"
+                placeholderTextColor={Palette.faint}
+                returnKeyType="search"
+                style={styles.modalSearchInput}
+                value={addSearchText}
+              />
+              <TouchableOpacity
+                activeOpacity={0.82}
+                onPress={handleUserSearch}
+                style={styles.modalSearchButton}
+              >
+                {searchingUsers ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.modalSearchButtonText}>搜尋</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              contentContainerStyle={styles.modalResults}
+              data={addSearchResults}
+              keyExtractor={(item) => item.uid}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <View style={styles.modalEmpty}>
+                  <Ionicons name="person-add-outline" size={30} color={Palette.faint} />
+                  <Text style={styles.modalEmptyText}>
+                    {addSearchText.trim() ? '找不到符合的使用者' : '輸入資料來搜尋新朋友'}
+                  </Text>
+                </View>
+              }
+              renderItem={renderAddResult}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -388,6 +578,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 18,
     marginBottom: 12,
   },
+  searchActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   warningBanner: {
     alignItems: 'center',
     backgroundColor: '#fff7e6',
@@ -412,6 +606,7 @@ const styles = StyleSheet.create({
     borderColor: Palette.border,
     borderRadius: Radius.card,
     borderWidth: 1,
+    flex: 1,
     flexDirection: 'row',
     minHeight: 50,
     paddingLeft: 13,
@@ -430,6 +625,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 6,
     width: 42,
+  },
+  addFriendButton: {
+    alignItems: 'center',
+    backgroundColor: Palette.primary,
+    borderRadius: Radius.control,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    minHeight: 50,
+    paddingHorizontal: 16,
+  },
+  addFriendButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
   },
   searchResults: {
     backgroundColor: Palette.surface,
@@ -484,6 +694,87 @@ const styles = StyleSheet.create({
   },
   addButtonDoneText: {
     color: Palette.success,
+  },
+  requestPanel: {
+    backgroundColor: Palette.surface,
+    borderColor: Palette.border,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    marginBottom: 12,
+    marginHorizontal: 18,
+    padding: 12,
+  },
+  requestHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  requestTitle: {
+    color: Palette.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  requestBadge: {
+    alignItems: 'center',
+    backgroundColor: Palette.danger,
+    borderRadius: 10,
+    justifyContent: 'center',
+    marginLeft: 7,
+    minHeight: 20,
+    minWidth: 20,
+    paddingHorizontal: 6,
+  },
+  requestBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  requestRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 9,
+    paddingVertical: 7,
+  },
+  requestBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  requestName: {
+    color: Palette.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  requestEmail: {
+    color: Palette.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  rejectButton: {
+    alignItems: 'center',
+    backgroundColor: Palette.surfaceAlt,
+    borderRadius: Radius.pill,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 13,
+  },
+  rejectButtonText: {
+    color: Palette.muted,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  acceptButton: {
+    alignItems: 'center',
+    backgroundColor: Palette.primary,
+    borderRadius: Radius.pill,
+    justifyContent: 'center',
+    minHeight: 34,
+    minWidth: 58,
+    paddingHorizontal: 13,
+  },
+  acceptButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '900',
   },
   segmentedControl: {
     backgroundColor: Palette.surfaceAlt,
@@ -613,5 +904,95 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 6,
     textAlign: 'center',
+  },
+  modalBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.42)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: Palette.surface,
+    borderRadius: 22,
+    maxHeight: '78%',
+    maxWidth: 560,
+    padding: 20,
+    shadowColor: '#101828',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 30,
+    width: '100%',
+    elevation: 8,
+  },
+  modalHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    color: Palette.text,
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  modalSubtitle: {
+    color: Palette.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  modalCloseButton: {
+    alignItems: 'center',
+    backgroundColor: Palette.surfaceAlt,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: 'center',
+    marginLeft: 14,
+    width: 36,
+  },
+  modalSearchRow: {
+    alignItems: 'center',
+    backgroundColor: Palette.background,
+    borderColor: Palette.border,
+    borderRadius: 15,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginTop: 18,
+    minHeight: 52,
+    paddingLeft: 13,
+  },
+  modalSearchInput: {
+    color: Palette.text,
+    flex: 1,
+    fontSize: 15,
+    paddingHorizontal: 10,
+  },
+  modalSearchButton: {
+    alignItems: 'center',
+    backgroundColor: Palette.primary,
+    borderRadius: 11,
+    justifyContent: 'center',
+    marginRight: 5,
+    minHeight: 42,
+    minWidth: 62,
+    paddingHorizontal: 12,
+  },
+  modalSearchButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  modalResults: {
+    flexGrow: 1,
+    paddingTop: 10,
+  },
+  modalEmpty: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  modalEmptyText: {
+    color: Palette.muted,
+    fontSize: 14,
+    marginTop: 9,
   },
 });

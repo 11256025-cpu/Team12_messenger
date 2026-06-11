@@ -19,6 +19,25 @@ export type FriendProfile = {
   addedAt?: Timestamp;
 };
 
+export type FriendRequest = {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  sender: {
+    uid: string;
+    email: string;
+    displayName: string;
+    photoURL: string | null;
+  };
+  recipient: {
+    uid: string;
+    email: string;
+    displayName: string;
+    photoURL: string | null;
+  };
+  createdAt?: Timestamp;
+};
+
 export type ChatSummary = {
   id: string;
   members: string[];
