@@ -18,16 +18,13 @@ import { AppAvatar } from '@/components/app-avatar';
 import { Palette, Radius, Shadow } from '@/constants/design';
 import { useAuth } from '@/contexts/auth-context';
 import {
-  acceptFriendRequest,
+  addFriend,
   getOtherMember,
-  rejectFriendRequest,
   searchUsers,
-  sendFriendRequest,
   subscribeChats,
-  subscribeFriendRequests,
   subscribeFriends,
 } from '@/services/chat-service';
-import { ChatSummary, FriendProfile, FriendRequest, UserProfile } from '@/types/user';
+import { ChatSummary, FriendProfile, UserProfile } from '@/types/user';
 import { formatListTime } from '@/utils/date';
 
 type ListMode = 'chats' | 'friends';
@@ -50,13 +47,11 @@ export default function ChatListScreen() {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [searchText, setSearchText] = useState('');
   const [friendResults, setFriendResults] = useState<FriendProfile[]>([]);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addSearchText, setAddSearchText] = useState('');
   const [addSearchResults, setAddSearchResults] = useState<UserProfile[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
-  const [sendingRequestUid, setSendingRequestUid] = useState<string | null>(null);
-  const [handlingRequestId, setHandlingRequestId] = useState<string | null>(null);
+  const [addingUid, setAddingUid] = useState<string | null>(null);
 
   const friendIds = useMemo(() => new Set(friends.map((friend) => friend.uid)), [friends]);
 
@@ -65,12 +60,10 @@ export default function ChatListScreen() {
 
     const unsubscribeFriends = subscribeFriends(user.uid, setFriends);
     const unsubscribeChats = subscribeChats(user.uid, setChats);
-    const unsubscribeRequests = subscribeFriendRequests(user.uid, setFriendRequests);
 
     return () => {
       unsubscribeFriends();
       unsubscribeChats();
-      unsubscribeRequests();
     };
   }, [user]);
 
@@ -107,40 +100,21 @@ export default function ChatListScreen() {
     }
   };
 
-  const handleSendRequest = async (recipientUid: string) => {
-    if (!profile) return;
+  const handleAddFriend = async (friendUid: string) => {
+    if (!user) return;
 
     try {
-      setSendingRequestUid(recipientUid);
-      await sendFriendRequest(profile, recipientUid);
-      Alert.alert('已送出邀請', '對方接受後才會成為好友。');
+      setAddingUid(friendUid);
+      const chatId = await addFriend(user.uid, friendUid);
+      setAddModalVisible(false);
+      setAddSearchText('');
+      setAddSearchResults([]);
+      setMode('chats');
+      openChat(chatId);
     } catch (error) {
-      Alert.alert('無法送出邀請', error instanceof Error ? error.message : '請稍後再試。');
+      Alert.alert('加入失敗', error instanceof Error ? error.message : '請稍後再試。');
     } finally {
-      setSendingRequestUid(null);
-    }
-  };
-
-  const handleAcceptRequest = async (request: FriendRequest) => {
-    try {
-      setHandlingRequestId(request.id);
-      await acceptFriendRequest(request);
-      Alert.alert('已成為好友', `你和 ${request.sender.displayName} 現在是好友。`);
-    } catch (error) {
-      Alert.alert('接受失敗', error instanceof Error ? error.message : '請稍後再試。');
-    } finally {
-      setHandlingRequestId(null);
-    }
-  };
-
-  const handleRejectRequest = async (request: FriendRequest) => {
-    try {
-      setHandlingRequestId(request.id);
-      await rejectFriendRequest(request.id);
-    } catch {
-      Alert.alert('拒絕失敗', '請稍後再試。');
-    } finally {
-      setHandlingRequestId(null);
+      setAddingUid(null);
     }
   };
 
@@ -215,7 +189,7 @@ export default function ChatListScreen() {
 
   const renderAddResult = ({ item }: { item: UserProfile }) => {
     const isFriend = friendIds.has(item.uid);
-    const isSending = sendingRequestUid === item.uid;
+    const isAdding = addingUid === item.uid;
 
     return (
       <View style={styles.searchResultRow}>
@@ -226,17 +200,17 @@ export default function ChatListScreen() {
         </View>
         <TouchableOpacity
           activeOpacity={0.82}
-          disabled={isFriend || isSending}
-          onPress={() => handleSendRequest(item.uid)}
-          style={[styles.addButton, isFriend && styles.addButtonDone, isSending && styles.addButtonDisabled]}
+          disabled={isFriend || isAdding}
+          onPress={() => handleAddFriend(item.uid)}
+          style={[styles.addButton, isFriend && styles.addButtonDone, isAdding && styles.addButtonDisabled]}
         >
-          {isSending ? (
+          {isAdding ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
-              <Ionicons name={isFriend ? 'checkmark' : 'paper-plane'} size={16} color={isFriend ? Palette.success : '#fff'} />
+              <Ionicons name={isFriend ? 'checkmark' : 'person-add'} size={16} color={isFriend ? Palette.success : '#fff'} />
               <Text style={[styles.addButtonText, isFriend && styles.addButtonDoneText]}>
-                {isFriend ? '已是好友' : '邀請'}
+                {isFriend ? '已是好友' : '加入'}
               </Text>
             </>
           )}
@@ -333,58 +307,6 @@ export default function ChatListScreen() {
         ) : null}
       </View>
 
-      {friendRequests.length > 0 ? (
-        <View style={styles.requestPanel}>
-          <View style={styles.requestHeader}>
-            <Text style={styles.requestTitle}>好友邀請</Text>
-            <View style={styles.requestBadge}>
-              <Text style={styles.requestBadgeText}>{friendRequests.length}</Text>
-            </View>
-          </View>
-          {friendRequests.map((request) => {
-            const isHandling = handlingRequestId === request.id;
-
-            return (
-              <View key={request.id} style={styles.requestRow}>
-                <AppAvatar
-                  name={request.sender.displayName}
-                  photoURL={request.sender.photoURL}
-                  size={44}
-                />
-                <View style={styles.requestBody}>
-                  <Text numberOfLines={1} style={styles.requestName}>
-                    {request.sender.displayName}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.requestEmail}>
-                    {request.sender.email}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  disabled={isHandling}
-                  onPress={() => handleRejectRequest(request)}
-                  style={styles.rejectButton}
-                >
-                  <Text style={styles.rejectButtonText}>拒絕</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  disabled={isHandling}
-                  onPress={() => handleAcceptRequest(request)}
-                  style={styles.acceptButton}
-                >
-                  {isHandling ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.acceptButtonText}>接受</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
-
       <View style={styles.segmentedControl}>
         <TouchableOpacity
           activeOpacity={0.82}
@@ -449,7 +371,7 @@ export default function ChatListScreen() {
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>新增好友</Text>
-                <Text style={styles.modalSubtitle}>搜尋後送出邀請，對方接受才會成為好友。</Text>
+                <Text style={styles.modalSubtitle}>搜尋使用者並直接加入好友。</Text>
               </View>
               <TouchableOpacity
                 accessibilityLabel="關閉"
@@ -694,87 +616,6 @@ const styles = StyleSheet.create({
   },
   addButtonDoneText: {
     color: Palette.success,
-  },
-  requestPanel: {
-    backgroundColor: Palette.surface,
-    borderColor: Palette.border,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    marginBottom: 12,
-    marginHorizontal: 18,
-    padding: 12,
-  },
-  requestHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    marginBottom: 6,
-  },
-  requestTitle: {
-    color: Palette.text,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  requestBadge: {
-    alignItems: 'center',
-    backgroundColor: Palette.danger,
-    borderRadius: 10,
-    justifyContent: 'center',
-    marginLeft: 7,
-    minHeight: 20,
-    minWidth: 20,
-    paddingHorizontal: 6,
-  },
-  requestBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  requestRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 9,
-    paddingVertical: 7,
-  },
-  requestBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  requestName: {
-    color: Palette.text,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  requestEmail: {
-    color: Palette.muted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  rejectButton: {
-    alignItems: 'center',
-    backgroundColor: Palette.surfaceAlt,
-    borderRadius: Radius.pill,
-    justifyContent: 'center',
-    minHeight: 34,
-    paddingHorizontal: 13,
-  },
-  rejectButtonText: {
-    color: Palette.muted,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  acceptButton: {
-    alignItems: 'center',
-    backgroundColor: Palette.primary,
-    borderRadius: Radius.pill,
-    justifyContent: 'center',
-    minHeight: 34,
-    minWidth: 58,
-    paddingHorizontal: 13,
-  },
-  acceptButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '900',
   },
   segmentedControl: {
     backgroundColor: Palette.surfaceAlt,

@@ -1,6 +1,5 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -21,7 +20,6 @@ import {
   ChatMessage,
   ChatSummary,
   FriendProfile,
-  FriendRequest,
   UserProfile,
 } from '@/types/user';
 
@@ -141,132 +139,6 @@ export async function addFriend(currentUid: string, friendUid: string) {
   await batch.commit();
 
   return chatId;
-}
-
-export async function sendFriendRequest(sender: UserProfile, recipientUid: string) {
-  if (sender.uid === recipientUid) {
-    throw new Error('不能邀請自己');
-  }
-
-  const recipientRef = doc(db, 'users', recipientUid);
-  const existingFriendRef = doc(db, 'users', sender.uid, 'friends', recipientUid);
-  const outgoingRef = doc(db, 'friendRequests', `${sender.uid}_${recipientUid}`);
-  const incomingRef = doc(db, 'friendRequests', `${recipientUid}_${sender.uid}`);
-  const [recipientSnapshot, friendSnapshot, outgoingSnapshot, incomingSnapshot] = await Promise.all([
-    getDoc(recipientRef),
-    getDoc(existingFriendRef),
-    getDoc(outgoingRef),
-    getDoc(incomingRef),
-  ]);
-
-  if (!recipientSnapshot.exists()) {
-    throw new Error('找不到使用者');
-  }
-
-  if (friendSnapshot.exists()) {
-    throw new Error('已經是好友');
-  }
-
-  if (outgoingSnapshot.exists()) {
-    throw new Error('已送出好友邀請');
-  }
-
-  if (incomingSnapshot.exists()) {
-    throw new Error('對方已邀請你，請直接接受邀請');
-  }
-
-  const recipient = recipientSnapshot.data() as UserProfile;
-
-  await setDoc(outgoingRef, {
-    senderId: sender.uid,
-    recipientId: recipient.uid,
-    sender: publicUser(sender),
-    recipient: publicUser(recipient),
-    createdAt: serverTimestamp(),
-  });
-}
-
-export function subscribeFriendRequests(
-  uid: string,
-  onChange: (requests: FriendRequest[]) => void,
-) {
-  const requestsQuery = query(
-    collection(db, 'friendRequests'),
-    where('recipientId', '==', uid),
-  );
-
-  return onSnapshot(
-    requestsQuery,
-    (snapshot) => {
-      const requests = snapshot.docs
-        .map((requestDoc) => ({
-          id: requestDoc.id,
-          ...requestDoc.data(),
-        }) as FriendRequest)
-        .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt));
-
-      onChange(requests);
-    },
-    (error) => {
-      console.warn('Unable to subscribe to friend requests:', error);
-      onChange([]);
-    },
-  );
-}
-
-export async function acceptFriendRequest(request: FriendRequest) {
-  const senderRef = doc(db, 'users', request.senderId);
-  const recipientRef = doc(db, 'users', request.recipientId);
-  const [senderSnapshot, recipientSnapshot] = await Promise.all([
-    getDoc(senderRef),
-    getDoc(recipientRef),
-  ]);
-
-  if (!senderSnapshot.exists() || !recipientSnapshot.exists()) {
-    throw new Error('使用者資料不存在');
-  }
-
-  const sender = senderSnapshot.data() as UserProfile;
-  const recipient = recipientSnapshot.data() as UserProfile;
-  const chatId = createChatId(sender.uid, recipient.uid);
-  const batch = writeBatch(db);
-
-  batch.set(doc(db, 'chats', chatId), {
-    id: chatId,
-    members: [sender.uid, recipient.uid],
-    memberInfo: {
-      [sender.uid]: publicUser(sender),
-      [recipient.uid]: publicUser(recipient),
-    },
-    lastMessage: null,
-    lastMessageAt: null,
-    lastMessageSenderId: null,
-    unreadCounts: {
-      [sender.uid]: 0,
-      [recipient.uid]: 0,
-    },
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
-
-  batch.set(doc(db, 'users', sender.uid, 'friends', recipient.uid), {
-    ...publicUser(recipient),
-    chatId,
-    addedAt: serverTimestamp(),
-  });
-  batch.set(doc(db, 'users', recipient.uid, 'friends', sender.uid), {
-    ...publicUser(sender),
-    chatId,
-    addedAt: serverTimestamp(),
-  });
-  batch.delete(doc(db, 'friendRequests', request.id));
-
-  await batch.commit();
-  return chatId;
-}
-
-export async function rejectFriendRequest(requestId: string) {
-  await deleteDoc(doc(db, 'friendRequests', requestId));
 }
 
 export function subscribeFriends(uid: string, onChange: (friends: FriendProfile[]) => void) {
