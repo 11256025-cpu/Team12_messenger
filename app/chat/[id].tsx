@@ -88,14 +88,17 @@ export default function ChatDetailScreen() {
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isMe = item.senderId === user?.uid;
     const time = formatMessageTime(item.createdAt);
+    const currentSender = isMe ? profile : chat?.memberInfo[item.senderId];
+    const senderName = currentSender?.displayName ?? item.senderName;
+    const senderPhotoURL = currentSender?.photoURL ?? item.senderPhotoURL;
 
     return (
       <View style={[styles.messageLine, isMe ? styles.messageLineMe : styles.messageLineThem]}>
         {!isMe ? (
-          <AppAvatar name={item.senderName} photoURL={item.senderPhotoURL} size={32} />
+          <AppAvatar name={senderName} photoURL={senderPhotoURL} size={32} />
         ) : null}
         <View style={[styles.messageGroup, isMe && styles.messageGroupMe]}>
-          {!isMe ? <Text style={styles.senderName}>{item.senderName}</Text> : null}
+          {!isMe ? <Text style={styles.senderName}>{senderName}</Text> : null}
           <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble]}>
             <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>{item.text}</Text>
           </View>
