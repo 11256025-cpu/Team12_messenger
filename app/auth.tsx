@@ -101,14 +101,11 @@ export default function AuthScreen() {
         contentContainerStyle={[styles.container, { paddingTop: insets.top + 28 }]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.brandRow}>
+        <View style={styles.brand}>
           <View style={styles.logoMark}>
             <Ionicons name="chatbubbles" size={30} color="#fff" />
           </View>
-          <View>
-            <Text style={styles.brandName}>Team12</Text>
-            <Text style={styles.brandSubname}>Messenger</Text>
-          </View>
+          <Text style={styles.brandName}>Messenger</Text>
         </View>
 
         <View style={styles.panel}>
@@ -249,14 +246,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
+    alignItems: 'center',
     flexGrow: 1,
+    justifyContent: 'center',
     padding: 20,
   },
-  brandRow: {
+  brand: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 22,
+    gap: 10,
+    marginBottom: 24,
   },
   logoMark: {
     alignItems: 'center',
@@ -268,13 +266,8 @@ const styles = StyleSheet.create({
   },
   brandName: {
     color: Palette.text,
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '900',
-  },
-  brandSubname: {
-    color: Palette.muted,
-    fontSize: 14,
-    fontWeight: '700',
   },
   panel: {
     ...Shadow.soft,
@@ -283,6 +276,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     borderWidth: 1,
     padding: 18,
+    width: '100%',
+    maxWidth: 520,
   },
   title: {
     color: Palette.text,

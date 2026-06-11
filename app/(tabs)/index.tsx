@@ -171,7 +171,7 @@ export default function ChatListScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.headerEyebrow}>Team12 Messenger</Text>
+          <Text style={styles.headerEyebrow}>Messenger</Text>
           <Text style={styles.headerTitle}>聊天</Text>
         </View>
         <AppAvatar name={profile?.displayName ?? 'Me'} photoURL={profile?.photoURL} size={46} />
